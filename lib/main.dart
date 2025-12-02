@@ -35,7 +35,15 @@ class MyApp extends StatelessWidget {
           visualDensity: VisualDensity.adaptivePlatformDensity,
         ),
         debugShowCheckedModeBanner: false,
-        home: const AuthWrapper(),
+        home: Provider<UserModel>.value(
+          value: UserModel(
+            uid: 'test-user',
+            email: 'test@example.com',
+            displayName: 'Usuario Prueba',
+            role: UserRole.admin,
+          ),
+          child: const HomeScreen(),
+        ),
       ),
     );
   }
