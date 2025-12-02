@@ -1,111 +1,96 @@
-import 'package:flutter/foundation.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:google_sign_in/google_sign_in.dart'; // ¡Nueva Importación!
-
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import '../models/user_model.dart';
 
-// Este servicio centraliza toda la interacción con Firebase Auth y maneja el perfil en Firestore
-class AuthService extends ChangeNotifier {
+/// Servicio para gestionar la autenticación de usuarios con Firebase.
+class AuthService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  final GoogleSignIn _googleSignIn = GoogleSignIn(); // Instancia de Google Sign-In
+  final GoogleSignIn _googleSignIn = GoogleSignIn();
 
-  // El Stream ahora emite nuestro propio UserModel
-  Stream<UserModel?> get authStateChanges => _auth.authStateChanges().asyncMap((user) async {
-    if (user == null) {
-      return null;
-    }
-    return await _getUserProfile(user.uid);
-  });
+  /// Un stream que emite el [UserModel] actual cuando el estado de autenticación cambia.
+  ///
+  /// Emite el objeto [UserModel] si el usuario está logueado, o `null` si no lo está.
+  /// Esto es fundamental para que la UI reaccione a los inicios y cierres de sesión.
+  Stream<UserModel?> get userStream {
+    return _auth.authStateChanges().asyncMap((firebaseUser) async {
+      if (firebaseUser == null) {
+        return null;
+      }
+      // Si hay un usuario en Firebase Auth, buscamos su documento en Firestore.
+      final userDoc =
+          await _firestore.collection('users').doc(firebaseUser.uid).get();
 
-  UserModel? _currentUserModel;
-  UserModel? get currentUserModel => _currentUserModel;
-
-  Future<UserModel?> get initialAuthCheck async {
-    return authStateChanges.first;
-  }
-  
-  Future<UserModel?> _getUserProfile(String uid) async {
-    try {
-      final doc = await _firestore.collection('users').doc(uid).get();
-      if (doc.exists && doc.data() != null) {
-        final userModel = UserModel.fromMap(doc.data()!);
-        _currentUserModel = userModel;
-        return userModel;
+      if (userDoc.exists) {
+        // Si encontramos el documento, lo convertimos a nuestro UserModel.
+        return UserModel.fromFirestore(userDoc);
       }
       return null;
-    } catch (e) {
-      debugPrint('Error al obtener perfil de Firestore: $e');
-      return null;
-    }
+    });
   }
 
-  // ==========================================================
-  //                MÉTODOS DE AUTENTICACIÓN
-  // ==========================================================
-
-  /// 1. Inicio de Sesión o Registro usando Google
+  /// Inicia el flujo de inicio de sesión con Google.
+  ///
+  /// Si el usuario es nuevo, crea un registro para él en la colección 'users'
+  /// de Firestore con el rol por defecto de 'collaborator'.
+  /// Devuelve el [UserModel] si el inicio de sesión es exitoso, de lo contrario `null`.
   Future<UserModel?> signInWithGoogle() async {
     try {
-      // 1. Iniciar el flujo de autenticación de Google
+      // 1. Iniciar el flujo de Google Sign In.
       final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
       if (googleUser == null) {
-        // El usuario canceló el inicio de sesión de Google
+        // El usuario canceló el proceso.
         return null;
       }
 
-      // 2. Obtener los detalles de autenticación de la solicitud
-      final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
-      final OAuthCredential credential = GoogleAuthProvider.credential(
+      // 2. Obtener las credenciales de autenticación de la cuenta de Google.
+      final GoogleSignInAuthentication googleAuth =
+          await googleUser.authentication;
+      final AuthCredential credential = GoogleAuthProvider.credential(
         accessToken: googleAuth.accessToken,
         idToken: googleAuth.idToken,
       );
 
-      // 3. Iniciar sesión en Firebase con las credenciales de Google
-      final UserCredential userCredential = await _auth.signInWithCredential(credential);
-      final User? user = userCredential.user;
+      // 3. Usar las credenciales para iniciar sesión en Firebase Auth.
+      final UserCredential userCredential =
+          await _auth.signInWithCredential(credential);
+      final User? firebaseUser = userCredential.user;
 
-      if (user != null) {
-        final uid = user.uid;
-        
-        // 4. Verificar si es un usuario nuevo (y crear su perfil en Firestore si lo es)
-        final userProfile = await _getUserProfile(uid);
+      if (firebaseUser != null) {
+        // 4. Verificar si es un usuario nuevo o existente en nuestra DB de Firestore.
+        final userDoc =
+            await _firestore.collection('users').doc(firebaseUser.uid).get();
 
-        if (userProfile == null) {
-          // Crear un nuevo perfil en Firestore
+        if (!userDoc.exists) {
+          // Es un usuario nuevo: lo creamos en Firestore.
           final newUser = UserModel(
-            uid: uid,
-            email: user.email ?? 'no-email@google.com',
-            displayName: user.displayName,
-            memberSince: DateTime.now(),
+            uid: firebaseUser.uid,
+            email: firebaseUser.email ?? '',
+            displayName: firebaseUser.displayName ?? 'Sin Nombre',
+            role: UserRole.collaborator, // Rol por defecto para nuevos usuarios.
           );
-
-          await _firestore.collection('users').doc(uid).set(newUser.toMap());
-          _currentUserModel = newUser;
-          notifyListeners();
+          await _firestore
+              .collection('users')
+              .doc(firebaseUser.uid)
+              .set(newUser.toJson());
           return newUser;
         } else {
-          // Usuario existente, ya está cargado en _getUserProfile
-          notifyListeners();
-          return userProfile;
+          // Es un usuario existente: devolvemos su información desde Firestore.
+          return UserModel.fromFirestore(userDoc);
         }
       }
-      return null;
-    } on FirebaseAuthException catch (e) {
-      debugPrint('Error de Firebase Auth con Google: ${e.code} - ${e.message}');
-      return null;
     } catch (e) {
-      debugPrint('Error desconocido al iniciar sesión con Google: $e');
+      // Manejo de errores (en un proyecto real, usarías un logger).
+      print('Error en signInWithGoogle: $e');
       return null;
     }
+    return null;
   }
 
-  /// 2. Cierre de Sesión (ahora también desconecta Google)
+  /// Cierra la sesión del usuario actual tanto en Firebase como en Google.
   Future<void> signOut() async {
-    await _googleSignIn.signOut(); // Desconecta la sesión de Google
+    await _googleSignIn.signOut();
     await _auth.signOut();
-    _currentUserModel = null;
-    notifyListeners();
   }
 }

@@ -1,26 +1,18 @@
-import 'package:flutter/material.dart';
+import 'package:Eva03/firebase_options.dart';
+import 'package:Eva03/models/user_model.dart';
+import 'package:Eva03/screens/home_screen.dart';
+import 'package:Eva03/screens/login_screen.dart';
+import 'package:Eva03/services/auth_service.dart';
+import 'package:Eva03/services/firestore_service.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-// Para el DatePicker en español
-import 'package:flutter_localizations/flutter_localizations.dart'; 
-// Si estás usando `firebase_options.dart` (generado por Firebase CLI), descomenta la siguiente línea:
-// import 'firebase_options.dart'; 
-
-// Importaciones de Archivos de la Aplicación
-import 'screens/splash_screen.dart'; 
-import 'services/auth_service.dart'; 
-import 'services/study_log_service.dart';
 
 void main() async {
-  // Asegura que los bindings de Flutter estén inicializados para llamar a métodos nativos
+  // Asegurarse de que los bindings de Flutter estén inicializados.
   WidgetsFlutterBinding.ensureInitialized();
-  
-  // 1. Inicialización de Firebase (Punto Crítico)
-  await Firebase.initializeApp(
-    // Si tienes configurado el CLI de Firebase, usa la siguiente línea:
-    // options: DefaultFirebaseOptions.currentPlatform, 
-  );
-
+  // Inicializar Firebase con las opciones de configuración para cada plataforma.
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   runApp(const MyApp());
 }
 
@@ -29,39 +21,53 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // 2. Configuración del MultiProvider
+    // MultiProvider permite que los widgets hijos accedan a nuestros servicios.
     return MultiProvider(
       providers: [
-        // Proveedor de Autenticación (maneja el estado de login)
-        ChangeNotifierProvider(create: (_) => AuthService()),
-        
-        // Proveedor de Registros de Estudio (maneja la lógica CRUD con Firestore)
-        ChangeNotifierProvider(create: (_) => StudyLogService()), 
+        Provider<AuthService>(create: (_) => AuthService()),
+        Provider<FirestoreService>(create: (_) => FirestoreService()),
       ],
       child: MaterialApp(
-        title: 'Eva03 | Registro de Estudio',
-        debugShowCheckedModeBanner: false,
+        title: 'FRACTAR',
         theme: ThemeData(
-          primarySwatch: Colors.indigo,
+          colorScheme: ColorScheme.fromSeed(seedColor: Colors.cyan),
+          useMaterial3: true,
           visualDensity: VisualDensity.adaptivePlatformDensity,
-          // Definir la fuente de iconos de material 3
-          useMaterial3: true, 
         ),
-        
-        // 3. Configuración de Localización (para el formato de fecha en español)
-        localizationsDelegates: const [
-          GlobalMaterialLocalizations.delegate,
-          GlobalWidgetsLocalizations.delegate,
-          GlobalCupertinoLocalizations.delegate,
-        ],
-        supportedLocales: const [
-          Locale('en', 'US'), // English
-          Locale('es', 'ES'), // Spanish (Importante para el DatePicker)
-        ],
-        
-        // La aplicación comienza en el SplashScreen para verificar la sesión.
-        home: const SplashScreen(),
+        debugShowCheckedModeBanner: false,
+        home: const AuthWrapper(),
       ),
+    );
+  }
+}
+
+/// Un widget que decide qué pantalla mostrar basado en el estado de autenticación.
+class AuthWrapper extends StatelessWidget {
+  const AuthWrapper({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final authService = Provider.of<AuthService>(context);
+
+    return StreamBuilder<UserModel?>(
+      stream: authService.userStream,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          // Muestra un indicador de carga mientras se verifica el estado de auth.
+          return const Scaffold(
+              body: Center(child: CircularProgressIndicator()));
+        } else if (snapshot.hasData && snapshot.data != null) {
+          // Si el stream tiene datos (un UserModel), el usuario está logueado.
+          // Proveemos el UserModel al árbol de widgets para que HomeScreen lo pueda usar.
+          return Provider<UserModel>.value(
+            value: snapshot.data!,
+            child: const HomeScreen(),
+          );
+        } else {
+          // Si no hay datos, el usuario no está logueado.
+          return const LoginScreen();
+        }
+      },
     );
   }
 }

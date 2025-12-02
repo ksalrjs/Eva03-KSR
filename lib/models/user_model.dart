@@ -1,63 +1,61 @@
-// Este modelo representa la información del usuario en nuestra aplicación,
-// desacoplada del objeto 'User' nativo de Firebase.
-class UserModel {
-  // Identificador único del usuario, el mismo que el UID de Firebase Auth.
-  final String uid; 
-  
-  // Información básica del perfil.
-  final String email;
-  final String? displayName;
-  
-  // Campo que podemos usar para personalizar la experiencia.
-  final DateTime? memberSince; 
+import 'package:cloud_firestore/cloud_firestore.dart';
 
-  // Constructor constante
-  const UserModel({
+/// Define los roles de usuario permitidos en la aplicación.
+/// Corresponde al requerimiento E1.
+enum UserRole {
+  admin, // 'Socias' con acceso total
+  collaborator, // 'Otros Colaboradores' con acceso limitado
+  unknown, // Rol por defecto o en caso de error
+}
+
+/// Representa a un usuario de la aplicación en la base de datos de Firestore.
+/// Almacena información adicional a la de Firebase Auth, como el rol.
+class UserModel {
+  final String uid;
+  final String email;
+  final String displayName;
+  final UserRole role;
+
+  UserModel({
     required this.uid,
     required this.email,
-    this.displayName,
-    this.memberSince,
+    required this.displayName,
+    required this.role,
   });
 
-  // ==========================================================
-  //                MÉTODOS DE MANEJO DE DATOS
-  // ==========================================================
-
-  /// Crea una instancia de UserModel a partir de un mapa de datos (usado para Firestore).
-  factory UserModel.fromMap(Map<String, dynamic> data) {
-    return UserModel(
-      uid: data['uid'] as String,
-      email: data['email'] as String,
-      displayName: data['displayName'] as String?,
-      // Los Timestamps de Firestore se deben convertir a DateTime en Dart
-      memberSince: data['memberSince'] != null 
-          ? DateTime.parse(data['memberSince'] as String) 
-          : null,
-    );
-  }
-
-  /// Convierte la instancia de UserModel a un mapa (usado para subir a Firestore).
-  Map<String, dynamic> toMap() {
+  /// Convierte la instancia de [UserModel] a un mapa para Firestore.
+  Map<String, dynamic> toJson() {
     return {
       'uid': uid,
       'email': email,
       'displayName': displayName,
-      'memberSince': memberSince?.toIso8601String(), // Guardamos como String ISO
+      // Guardamos el rol como un string (ej: 'admin') para que sea legible en Firestore.
+      'role': role.name,
     };
   }
 
-  /// Método para copiar el objeto con posibles cambios, manteniendo la inmutabilidad.
-  UserModel copyWith({
-    String? uid,
-    String? email,
-    String? displayName,
-    DateTime? memberSince,
-  }) {
+  /// Crea una instancia de [UserModel] desde un [DocumentSnapshot] de Firestore.
+  factory UserModel.fromFirestore(DocumentSnapshot doc) {
+    Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
+
+    // Convierte el string del rol desde Firestore a nuestro enum UserRole.
+    UserRole role;
+    switch (data['role']) {
+      case 'admin':
+        role = UserRole.admin;
+        break;
+      case 'collaborator':
+        role = UserRole.collaborator;
+        break;
+      default:
+        role = UserRole.unknown;
+    }
+
     return UserModel(
-      uid: uid ?? this.uid,
-      email: email ?? this.email,
-      displayName: displayName ?? this.displayName,
-      memberSince: memberSince ?? this.memberSince,
+      uid: data['uid'] ?? '',
+      email: data['email'] ?? '',
+      displayName: data['displayName'] ?? '',
+      role: role,
     );
   }
 }

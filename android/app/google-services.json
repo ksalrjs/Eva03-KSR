@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "367997969822",
+    "project_id": "fractar-a3035",
+    "storage_bucket": "fractar-a3035.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:367997969822:android:8632eb4b9be00e7331228f",
+        "android_client_info": {
+          "package_name": "com.company.FrActar"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "367997969822-7enjk9ql365j4ig52vlgocb81hasd8d8.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBMaUGJ32fnbbhgGTfmkv_zuTJ05ZMEqJg"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "367997969822-7enjk9ql365j4ig52vlgocb81hasd8d8.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
